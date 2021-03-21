@@ -4,8 +4,6 @@
 #include <random>
 #include<functional>
 #include <eigen3/Eigen/Dense>
-#include "LBFGS.h"
-#include "LBFGSB.h"
 
 using namespace std;
 
