@@ -4,12 +4,10 @@
 
 using namespace std;
 
-double call(double x,double strike){
-  if (x-strike>0){
-    return x-strike;}
-  else{
-    return 0;
-  }
+double call (double const& x, double const& strike)
+{
+  if (x > strike) return x-strike;
+  else return 0;
 };
 
 double norm_pdf(const double& x) {
