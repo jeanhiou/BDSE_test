@@ -4,6 +4,7 @@
 #include <random>
 #include<functional>
 #include <eigen3/Eigen/Dense>
+#include "compose.hpp"
 
 using namespace std;
 
@@ -227,4 +228,78 @@ private:
   double T;
   std::function<double(const double &)> payoff;
   std::function<double(const double &,const double &, const double &, const double &)> generator;
+};
+
+
+template<typename TDistrib>
+struct BSDE2{
+
+  BSDE2( TDistrib X_target, double T, std::function<double(const double &)> payoff, std::function<double(const double &,
+    const double &, const double &, const double &, const double &)> generator2,
+     std::function<double (const double &)> alpha_z,std::function<Eigen::MatrixXd ( const double &, const double &)> sigma,
+      std::function<Eigen::MatrixXd (const double &)> gamma_t):
+      X_target(X_target),T(T),payoff(payoff),sigma(sigma),alpha_z(alpha_z),gamma_t(gamma_t),generator2(generator2) {};
+
+  template<typename TGen>
+  double resolution_explicite(const TGen & gen){
+
+    std::normal_distribution<double> G1(0,1);
+    std::normal_distribution<double> G2(0,1);
+    double epsilon = 0.01;
+    std::function<double(const double &)> dg = [=] (const double x ){ return (payoff(x + epsilon ) - payoff(x))/epsilon; };
+
+    Eigen::MatrixXd X_0_t = X_target(gen);
+
+    int N_temps = X_0_t.row(0).size();
+    int N_traj = X_0_t.col(0).size();
+
+    double delta_t = T/N_temps;
+
+    Eigen::VectorXd X_T = X_0_t.col(N_temps-1);
+    Eigen::VectorXd Z_T(N_traj);
+    Eigen::VectorXd Y_T(N_traj);
+
+    Eigen::VectorXd Z_new(N_traj);
+    Eigen::VectorXd Y_new(N_traj);
+    Eigen::VectorXd Gamma(N_traj);
+
+    Eigen::VectorXd delta_W(N_traj);
+
+    for (int i = 0; i <N_traj;i++){
+      Z_T(i) = dg(X_T(i));
+      Y_T(i) = payoff(X_T(i));
+    };
+
+    
+
+
+    conditional_expect(3,X_0_t.col(N_temps-2),Y_delta_W);
+
+
+    Eigen::VectorXd ConditionalY = conditional_expect(3,X_0_t.col(N_temps-2),Y_T);
+    Eigen::VectorXd ConditionalZ(N_traj) = conditional_expect(3,X_0_t.col(N_temps-2),Z_T.dot(delta_W));
+    Eigen::MatrixXd sigma = sigma(T,X_T);
+    Gamma = (sigma.transpose()).ldlt().solve(ConditionalZ/delta_t);
+    Z_new = sigma.ldlt().solve(ConditionalY/delta_t);
+    Eigen::MatrixXd sigma_2 = sigma * sigma.transpose() * Gamma;
+    Y_new = ConditionalY + ( generator2 (t,x,y,z,gamma) - 0.5 * sigma_2.trace() ) * delta_t;
+
+
+
+
+
+
+
+
+    return 1.;
+};
+
+private:
+  TDistrib X_target;
+  double T;
+  std::function<double(const double &)> payoff;
+  std::function<Eigen::MatrixXd(const double &, const double &)> sigma;
+  std::function<double ( const double &)> alpha_z;
+  std::function<Eigen::MatrixXd ( const double &)> gamma_t;
+  std::function<double(const double &,const double &, const double &, const double &,const double &)> generator2;
 };

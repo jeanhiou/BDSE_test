@@ -57,18 +57,21 @@ int main(){
   double mu = r - sigma * sigma / 2. ;
 
   std::function<double(const double &)> payoff = [=] (double x){return call(x,strike);};
+  std::function<double(const double &)> cva = [=](double x){ return call(x,0)-x ;};
   std::function<double(const double &,const double &, const double &, const double &)> generator = [=] (double time, double x, double y, double z){ return - r * y ;};
+  std::function<double(const double &)> test = [=] (double x){return x*x;};
+
 
   BS_traj Bs_test(S0, sigma, T,mu);
   BSDE<BS_traj> bsde_test(Bs_test,T,payoff,generator);
 
-  // 
-  // std::cout << " methode explicite 1 = " << std::endl;
-  // std::cout << bsde_test.resolution_explicite(gen) << std::endl;
-  // std::cout << std::endl;
-  // std::cout << " methode explicite 2 = " << std::endl;
-  // std::cout << bsde_test.resolution_explicite_2(gen) << std::endl;
-  // std::cout << std::endl;
+  //
+  std::cout << " methode explicite 1 = " << std::endl;
+  std::cout << bsde_test.resolution_explicite(gen) << std::endl;
+  std::cout << std::endl;
+  std::cout << " methode explicite 2 = " << std::endl;
+  std::cout << bsde_test.resolution_explicite_2(gen) << std::endl;
+  std::cout << std::endl;
   std::cout << " methode implicite = " << std::endl;
   std::cout << bsde_test.resolution_implicite(gen) << std::endl;
 
