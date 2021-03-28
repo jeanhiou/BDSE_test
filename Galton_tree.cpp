@@ -14,18 +14,21 @@ int main(){
   auto m = Galton(P,P2,gen);
   exponentiel_distribution E(1);
 
-  State<double> ini_position = {0.,0.};
-  Node *root;
+  state<double> ini_position = {0.,0.};
+
+  path<double> path = path_sim(ini_position,10);
+
+  Node* root;
   root=create(ini_position,3.);
-  std::cout << std::endl;
-  preorder(root);
-  std::cout << " number of particules emmited = " << getLeafCount(root) << std::endl;
-  std::cout << " max_particules_emises par le parent = " << maxDepth(root) << std::endl;
+  std::cout << getLeafCount(root) << std::endl;
+
   ofstream of("particles.txt");
   SaveNodes(root,of);
   of.close();
-  vector<State<double>> try_test = read_vect("particles.txt");
-  std::cout << try_test << std::endl;
+
+  // vector<State<double>> try_test = read_vect("particles.txt");
+  // std::cout << try_test << std::endl;
+
 
   return 0;
 };

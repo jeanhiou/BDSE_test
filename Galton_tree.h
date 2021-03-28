@@ -3,44 +3,40 @@
 #include<vector>
 #include <bits/stdc++.h>
 #include <fstream>
+#include "var.h"
+
+#define COUNT 10
 
 using namespace std;
 
-struct lien{
-  int parent;
-  int fils;
+
+template <typename T>
+struct state {
+    double time;
+    T value;
 };
 
-std::ostream & operator<<(std::ostream & o, lien const & p) {
-    o << p.parent << p.fils << std::endl;
-    return o << std::endl;
-};
-
-std::ostream & operator<<(std::ostream & o, vector<lien> const & p){
-  for (auto const & st: p){
-        o << st << std::endl;
+template <typename T>
+std::ostream & operator<<(std::ostream & o, state<T> const & s) {
+    return o << s.time << "\t" << s.value;
 }
-      return o << std::endl;
+
+template <typename T>
+struct path : protected std::vector<state<T>> {
+    using vec = std::vector<state<T>>;  // alias de nom
+    using vec::vec;             // constructeur de la classe vector utilisable
+    using vec::operator[];      // opérateur [] utilisable (public)
+    using vec::begin;           // itérateurs utilisables (for-range loop)
+    using vec::end;
+    using vec::size;            // utile !
 };
 
-struct Normalized_Poisson_process{
-  Normalized_Poisson_process(double t):t(t), U(0,1){};
-
-  template<typename TGen>
-  int operator()(TGen & gen){
-    double somme = U(gen);
-    int k = 0;
-    while (somme > exp(-t)){
-      somme *= U(gen);
-      k +=1;
-    };
-    return k;
-  }
-
-private:
-  uniform_real_distribution<> U;
-  double t;
-};
+template <typename T>
+std::ostream & operator<<(std::ostream & o, path<T> const & p) {
+    for (auto const & st : p)
+        o << st << std::endl;
+    return o << std::endl;
+}
 
 template<typename TDistrib1,typename TDistrib2, typename TGen>
 struct Galton_Watson{
@@ -74,95 +70,56 @@ private:
 template <typename TDistrib1,typename TDistrib2,typename TGen>
 inline Galton_Watson<TDistrib1,TDistrib2,TGen> Galton(const TDistrib1 & X,const TDistrib2 & Z, const TGen &gen ){ return Galton_Watson<TDistrib1,TDistrib2,TGen>(X,Z,gen);};
 
-struct exponentiel_distribution
-{
-  exponentiel_distribution(double lambda): lambda(lambda), U(0,1) {};
 
-  template<typename TGen>
-  double operator()(TGen &gen){
-    return -log (U(gen))/lambda;
-  };
-
-private:
-  double lambda;
-  uniform_real_distribution<> U;
-};
-
-template<typename T>
-struct State{
-  double time;
-  T value;
-};
-
-template<typename T>
-std::ostream & operator<<(std::ostream & o, State<T> const & p) {
-    o << p.time <<" " <<  p.value << std::endl;
-    return o << std::endl;
-};
-
-template <typename T>
-std::ostream & operator<<(std::ostream & o, vector<T> const & p) {
-    for (auto const & st : p)
-        o << st << std::endl;
-    return o;
-};
-
-void save_fichier_path(string filename, State<double> & p)
-{
-    ofstream of(filename); // ouverture du fichier
-    of << p.time << " " << p.value << endl;           // fermature du fichier
-};
-
-
-
-State<double> path_sim(State<double> ini_position,int N){
+path<double> path_sim(state<double> ini_position,int N){
   random_device rd;
   mt19937_64 gen(rd());
   exponentiel_distribution E(1);
   std::normal_distribution<double> G(0,1);
   double left_time = E(gen);
   double delta_t = left_time/N ;
+  path<double> Traj(N+1);
+  Traj[0].time = ini_position.time;
+  Traj[0].value = ini_position.value;
   for (int i = 0;i<N;i++){
-    ini_position.value += sqrt(delta_t) *G(gen);
+    Traj[i+1].value = Traj[i].time + sqrt(delta_t) *G(gen);
+    Traj[i+1].time  = Traj[i].time + delta_t;
   };
-  return {ini_position.time + left_time, ini_position.value };
+  return Traj;
 };
 
 struct Node
 {
-    State<double> key;
+    path<double> key;
     Node* left;
     Node* right;
 };
 
+struct Node* newNode(path<double> data) {
+  struct Node* tree = new (struct Node);
+  tree->key = data;
+  tree->left = NULL;
+  tree->right = NULL;
+  return tree;
+}
 
-struct Node* newNode(State<double> value)
-  {
-  	Node* n = new Node;
-  	n->key = value;
-  	n->left = NULL;
-  	n->right = NULL;
-  	return n;
+struct Node* create(state<double> init_position,double T)
+   {
+    Node* p;
+   	path<double> ini_recur = path_sim(init_position,4);
+    if (ini_recur[4].time > T){
+      return NULL;
+    }
+    else
+    {
+    p= newNode(ini_recur);
+   	p->left=create(ini_recur[4],T);
+   	p->right=create(ini_recur[4],T);
   }
 
-struct Node* create(State<double> init_position,double T)
- {
- 	Node* p;
-  State<double> ini_recur = path_sim(init_position,10);
-
-  if (ini_recur.time > T){
-    return NULL;
-  };
-  p=(Node*)malloc(sizeof(Node));
-  p->key=ini_recur;
-
- 	p->left=create(ini_recur,T);
-
- 	p->right=create(ini_recur,T);
-  init_position = ini_recur;
-
   return p;
-};
+  };
+
 
 void preorder(Node* t)		//address of root node is passed in t
 {
@@ -173,17 +130,15 @@ void preorder(Node* t)		//address of root node is passed in t
 	}
 }
 
-
+//
 unsigned int getLeafCount(struct Node* node)
 {
     if(node == NULL)
         return 0;
-    if(node->left == NULL && node->right == NULL)
-        return 1;
-    else
-        return getLeafCount(node->left)+
-            getLeafCount(node->right);
-}
+    else{
+        return 1 + getLeafCount(node->left)+ getLeafCount(node->right);
+      }
+};
 
 
 int maxDepth(Node* node)
@@ -203,145 +158,118 @@ int maxDepth(Node* node)
     }
 }
 
-void printNodes(Node* root)
-{
-    // return if the tree is empty
-    if (root == nullptr) {
-        return;
-    }
-
-    // print the root node
-    cout << root->key << " ";
-
-    // create two empty queues and enqueue root's left and
-    // right child, respectively
-    queue<Node*> q1, q2;
-    q1.push(root->left);
-    q2.push(root->right);
-
-    // loop till queue is empty
-    while (!q1.empty())
-    {
-        // calculate the total number of nodes at the current level
-        int n = q1.size();
-
-        // process every node of the current level
-        while (n--)
-        {
-            // dequeue front node from the first queue and print it
-            Node* x = q1.front();
-            q1.pop();
-
-            cout << x->key << " ";
-
-            // enqueue left and right child of `x` to the first queue
-            if (x->left) {
-                q1.push(x->left);
-            }
-
-            if (x->right) {
-                q1.push(x->right);
-            }
-
-            // dequeue front node from the second queue and print it
-            Node* y = q2.front();
-            q2.pop();
-
-            cout << y->key << " ";
-
-            // enqueue right and left child of `y` to the second queue
-            if (y->right) {
-                q2.push(y->right);
-            }
-
-            if (y->left) {
-                q2.push(y->left);
-            }
-        }
-    }
-}
-
-
-void SaveNodes(Node* root,ofstream& of)
-{
-    // return if the tree is empty
-    if (root == nullptr) {
-        return;
-    }
-
-    // print the root node
-    of << root->key << " ";
-
-    // create two empty queues and enqueue root's left and
-    // right child, respectively
-    queue<Node*> q1, q2;
-    q1.push(root->left);
-    q2.push(root->right);
-
-    // loop till queue is empty
-    while (!q1.empty())
-    {
-        // calculate the total number of nodes at the current level
-        int n = q1.size();
-
-        // process every node of the current level
-        while (n--)
-        {
-            // dequeue front node from the first queue and print it
-            Node* x = q1.front();
-            q1.pop();
-
-            of << x->key << " ";
-
-            // enqueue left and right child of `x` to the first queue
-            if (x->left) {
-                q1.push(x->left);
-            }
-
-            if (x->right) {
-                q1.push(x->right);
-            }
-
-            // dequeue front node from the second queue and print it
-            Node* y = q2.front();
-            q2.pop();
-
-            of << y->key << " ";
-
-            // enqueue right and left child of `y` to the second queue
-            if (y->right) {
-                q2.push(y->right);
-            }
-
-            if (y->left) {
-                q2.push(y->left);
-            }
-        }
-    }
-}
-
-
-
-vector<State<double>> read_vect (const char *Nomfich)
-{
-  ifstream fileIn(Nomfich); // fileName is not a good name for a file!
-
-  double data;
-  vector<double> myVec ;
-  while (fileIn >> data)
+void LastLeaves(Node* root){
+  if(root == NULL)
   {
-    myVec.push_back(data);
+    return;
   }
-  int N = myVec.size()/2;
-  vector<State<double>> mes_petites_particules(N);
-  for (int i = 0;i<N;i++){
-    mes_petites_particules[i] = {myVec[2*i],myVec[2*i+1]};
+  if (root-> left != NULL | root -> right != NULL )
+  {
+      LastLeaves(root->right);
+      LastLeaves(root->left);
+  }
+  else
+  {
+    std::cout << root-> key << std::endl;
+    std::cout << endl;
+    return;
   };
-  return mes_petites_particules;
 };
 
+void SaveNodes(Node* root,ofstream& of){
+  if(root == NULL)
+  {
+    return;
+  }
+  else
+  {   of << root-> key << std::endl;
+      of << endl;
+      SaveNodes(root->right,of);
+      SaveNodes(root->left,of);
+  }
+};
 
+// //
+// vector<path<double>> read_vect (const char *Nomfich)
+// {
+//   ifstream fileIn(Nomfich); // fileName is not a good name for a file!
+//
+//   double data;
+//   vector<double> myVec ;
+//   while (fileIn >> data)
+//   {
+//     myVec.push_back(data);
+//   }
+//   int N = myVec.size()/2;
+//   vector<path<double>> mes_petites_particules(N);
+//   for (int i = 0;i<N;i++){
+//     mes_petites_particules[i] = {myVec[2*i],myVec[2*i+1]};
+//   };
+//   return mes_petites_particules;
+// };
+//
+//
 std::ostream & operator<<(std::ostream &o,const Node& n){
   o << n.key << std::endl;
   return o << std::endl;
 };
+
+struct Trunk
+{
+    Trunk *prev;
+    string str;
+
+    Trunk(Trunk *prev, string str)
+    {
+        this->prev = prev;
+        this->str = str;
+    }
+};
+
+// Helper function to print branches of the binary tree
+void showTrunks(Trunk *p)
+{
+    if (p == nullptr) {
+        return;
+    }
+
+    showTrunks(p->prev);
+    cout << p->str;
+}
+
+// Recursive function to print a binary tree.
+// It uses the inorder traversal.
+void printTree(Node* root, Trunk *prev, bool isLeft)
+{
+    if (root == nullptr) {
+        return;
+    }
+
+    string prev_str = "    ";
+    Trunk *trunk = new Trunk(prev, prev_str);
+
+    printTree(root->right, trunk, true);
+
+    if (!prev) {
+        trunk->str = "———";
+    }
+    else if (isLeft)
+    {
+        trunk->str = ".———";
+        prev_str = "   |";
+    }
+    else {
+        trunk->str = "`———";
+        prev->str = prev_str;
+    }
+
+    showTrunks(trunk);
+    cout << root->key << endl;
+
+    if (prev) {
+        prev->str = prev_str;
+    }
+    trunk->str = "   |";
+
+    printTree(root->left, trunk, false);
+}
