@@ -3,6 +3,15 @@
 
 using namespace std;
 
+double positive_part(const double& x){
+  if (x>=0){
+    return x;
+  }
+  else{
+    return 0;
+  };
+};
+
 int main(){
 
   random_device rd;
@@ -13,30 +22,25 @@ int main(){
   double r = 0.05;
   double sigma = 0.2;
   double S0 = 1.;
-  state<double> ini_position = { 0.,S0};
+  state<double> ini_position = { 0.,0.};
   int N = 20;
-  double t = 1.;
   Brownien_geo B_geo(r,sigma);
+  Brownien B_si;
 
   exponentiel_distribution Life_time(lambda);
 
-  std::function<double(double const & )> payoff = [=] (double const &x){return x*x ;};
-  double Maturity = 2.;
+  std::function<double(double const & )> payoff = [=] (double const &x){return positive_part(x) ;};
+  double Maturity = 1.;
   double spot = S0  ;
 
-  int N_simulations = 10000;
-  std::cout << B_geo(gen,ini_position,1.,N) << std::endl;
-
-  Node* root;
-  root=create(ini_position,Maturity,N,B_geo,Life_time,gen);
-  ofstream of1("particles.txt");
-  SaveNodes(root,of1);
-  of1.close();
+  int N_simulations = 1000;
+  Branch_diffusion_simple<Brownien,exponentiel_distribution> B_test(B_si,Life_time,payoff,Maturity,spot);
 
 
-
-  // Branch_diffusion_simple<Brownien_geo,exponentiel_distribution> B_test(B_geo,Life_time,payoff,Maturity,spot);
-  // std::cout << B_test(N_simulations,gen) << std::endl;
+  timer t;
+  t.reset();
+  auto result = monte_carlo(B_test, gen, N_simulations);
+  cout << t << "\t" << result << endl;
 
 
 

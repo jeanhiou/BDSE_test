@@ -4,6 +4,13 @@
 #include <bits/stdc++.h>
 #include <fstream>
 #include "random_va.h"
+#include "Monte_carlo_template/timer.hpp"
+#include "Monte_carlo_template/timer.hpp"
+#include "Monte_carlo_template/compose.hpp"
+#include "Monte_carlo_template/quantile.hpp"
+#include "Monte_carlo_template/mc.hpp"
+#include "Monte_carlo_template/monte.hpp"
+
 #define COUNT 10
 
 
@@ -291,15 +298,36 @@ struct Brownien_geo{
   };
 
 private:
-  double sigma;
   double r;
+  double sigma;
+  std::normal_distribution<> G;
+
+};
+
+struct Brownien{
+
+    Brownien(): G(0,1) {};
+
+    template<typename TGen>
+    path<double> operator()(TGen & gen, state<double> ini_position, double t, int N)
+    {
+      path<double> trajectories(N+1);
+      trajectories[0] = ini_position;
+      double delta_t = t/N;
+      for (int i = 1 ; i< N+1 ; i++){
+        trajectories[i].time = trajectories[i-1].time + delta_t ;
+        trajectories[i].value= trajectories[i-1].value + sqrt(delta_t) * G(gen) ;
+      }
+      return trajectories;
+    };
+
+private:
   std::normal_distribution<> G;
 };
 
-
-
 double prod(const path<double>& Times_traj_T,std::function<double(double const &)> payoff){
   int N = Times_traj_T.size();
+  std::cout << "nombre de particules = " << N << std::endl;
   double product = 1.;
   for (int i = 0; i< N; i++){
     product *= payoff(Times_traj_T[i].value);
@@ -309,26 +337,25 @@ double prod(const path<double>& Times_traj_T,std::function<double(double const &
 
 
 template<typename TDistrib1,typename TDistrib2>
-struct Branch_diffusion_simple{ 
+struct Branch_diffusion_simple{
   Branch_diffusion_simple(TDistrib1 X, TDistrib2 Life_time, std::function<double(double const & )> payoff, double Maturity, double spot):
   X(X),Life_time(Life_time),payoff(payoff),Maturity(Maturity),spot(spot){};
 
   template<typename TGen>
-  double operator()(int N_simulations,TGen& gen){
-    double somme_esperance = 0;
+  double operator()(TGen& gen)
+  {
     state<double> ini_position = {0.,spot };
-    int N = 50;
-    for (int i = 0; i< N_simulations;i++)
-    {
-      Node* root;
-      root=create(ini_position,Maturity,N,X,Life_time,gen);
-      ofstream of1("last_leaves.txt");
-      LastLeaves(root,of1);
-      of1.close();
-      path<double> Times_traj_T = read_vect_particles_T("last_leaves.txt",N,Maturity);
-      somme_esperance += prod(Times_traj_T,payoff);
-    };
-    return somme_esperance / N_simulations;
+    int N = 20;
+    Node* root;
+    root=create(ini_position,Maturity,N,X,Life_time,gen);
+    ofstream of("particles.txt");
+    SaveNodes(root,of);
+    of.close();
+    ofstream of1("last_leaves.txt");
+    LastLeaves(root,of1);
+    of1.close();
+    path<double> Times_traj_T = read_vect_particles_T("last_leaves.txt",N,Maturity);
+    return prod(Times_traj_T,payoff);
   };
 
 private:

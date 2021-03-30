@@ -9,6 +9,30 @@
 
 using namespace std;
 
+template<typename T>
+vector<T> s(vector<T> const &v, int m, int n) {
+   auto first = v.begin() + m;
+   auto last = v.begin() + n + 1;
+   vector<T> vector(first, last);
+   return vector;
+}
+
+template<typename T>
+void show(vector<T> const &v) {
+   for (auto i: v) {
+      cout << i << ' ';
+   }
+   cout << '\n';
+}
+
+template<typename T>
+ostream & operator <<(ostream & os,const vector<T>& v){
+  for (auto s: v){
+    os << s << endl;
+  }
+  return os;
+};
+
 
 template <typename T>
 struct state {
@@ -31,45 +55,23 @@ struct path : protected std::vector<state<T>> {
     using vec::size;            // utile !
 };
 
+vector<double> time_scale(const path<double>& paths)
+{
+  int N = paths.size();
+  vector<double> times(N);
+  for (int i = 0; i< N; i++){
+    times[i] = paths[i].time;
+  };
+  return times;
+};
+
 template <typename T>
-std::ostream & operator<<(std::ostream & o, path<T> const & p) {
+std::ostream & operator<<(std::ostream & o, path<T> const & p)
+{
     for (auto const & st : p)
         o << st << std::endl;
     return o << std::endl;
 }
-
-template<typename TDistrib1,typename TDistrib2, typename TGen>
-struct Galton_Watson{
-
-  Galton_Watson(const TDistrib1 & X,const TDistrib2 & Z, const TGen &gen1 ): X(X),Z_0(Z),gen(gen1),membres(0) {};
-
-  int Taille_population(){
-    return membres;
-  };
-
-  void start(){
-    membres += Z_0(gen);
-  };
-
-  void operator()(){
-    int somme = 0;
-    for (int i = 0;i< membres ;i++){
-      somme += X(gen);
-    };
-    membres += somme;
-
-  };
-
-private:
-  TDistrib1 X;
-  TDistrib2 Z_0;
-  TGen gen;
-  int membres;
-};
-
-template <typename TDistrib1,typename TDistrib2,typename TGen>
-inline Galton_Watson<TDistrib1,TDistrib2,TGen> Galton(const TDistrib1 & X,const TDistrib2 & Z, const TGen &gen ){ return Galton_Watson<TDistrib1,TDistrib2,TGen>(X,Z,gen);};
-
 
 path<double> path_sim(state<double> ini_position,int N){
   random_device rd;
@@ -103,23 +105,22 @@ struct Node* newNode(path<double> data) {
   return tree;
 }
 
-struct Node* create(state<double> init_position,double T)
+struct Node* create(state<double> init_position,double T,int N)
    {
     Node* p;
-   	path<double> ini_recur = path_sim(init_position,4);
-    if (ini_recur[4].time > T){
+   	path<double> ini_recur = path_sim(init_position,N);
+    if (ini_recur[0].time > T ){
       return NULL;
     }
     else
     {
     p= newNode(ini_recur);
-   	p->left=create(ini_recur[4],T);
-   	p->right=create(ini_recur[4],T);
+   	p->left=create(ini_recur[N],T,N);
+   	p->right=create(ini_recur[N],T,N);
   }
 
   return p;
   };
-
 
 void preorder(Node* t)		//address of root node is passed in t
 {
@@ -158,18 +159,19 @@ int maxDepth(Node* node)
     }
 }
 
-void LastLeaves(Node* root){
+void LastLeaves(Node* root,ofstream& of){
   if(root == NULL)
   {
     return;
   }
   if (root-> left != NULL | root -> right != NULL )
   {
-      LastLeaves(root->right);
-      LastLeaves(root->left);
+      LastLeaves(root->right,of);
+      LastLeaves(root->left,of);
   }
   else
   {
+    of << root -> key << std::endl;
     std::cout << root-> key << std::endl;
     std::cout << endl;
     return;
@@ -189,26 +191,37 @@ void SaveNodes(Node* root,ofstream& of){
   }
 };
 
-// //
-// vector<path<double>> read_vect (const char *Nomfich)
-// {
-//   ifstream fileIn(Nomfich); // fileName is not a good name for a file!
-//
-//   double data;
-//   vector<double> myVec ;
-//   while (fileIn >> data)
-//   {
-//     myVec.push_back(data);
-//   }
-//   int N = myVec.size()/2;
-//   vector<path<double>> mes_petites_particules(N);
-//   for (int i = 0;i<N;i++){
-//     mes_petites_particules[i] = {myVec[2*i],myVec[2*i+1]};
-//   };
-//   return mes_petites_particules;
-// };
-//
-//
+vector<state<double>> read_vect_particles_T (const char *Nomfich , int N,double T)
+{
+  ifstream fileIn(Nomfich);
+  double data;
+  vector<double> myVec ;
+  while (fileIn >> data)
+  {
+    myVec.push_back(data);
+  }
+  std::cout << " myVec" << std::endl;
+  std::cout << myVec << std::endl;
+  int N_pat = myVec.size()/(2*N);
+  std::cout << "nombre de particules = "  << N_pat << std::endl;
+  vector<state<double>> pat(N_pat);
+  for (int i = 0 ; i<N_pat; i++){
+    int k = 0;
+    double min_temps = 10.;
+    for (int j = 0;j<N;j++){
+      min_temps = min(min_temps,abs(myVec[2*j +i*2*N]-T));
+    };
+    while( min_temps != abs(myVec[2*k+i*2*N] - T) ){
+      k+=1;
+    };
+    pat[i].value = 0.5*(myVec[2*k+i*2*N+1] + myVec[2*k+i*2*N+3]) ;
+    pat[i].time  = 0.5*(myVec[2*k+i*2*N] + myVec[2*k+i*2*N+2] );
+  };
+  return pat;
+};
+
+
+
 std::ostream & operator<<(std::ostream &o,const Node& n){
   o << n.key << std::endl;
   return o << std::endl;
@@ -226,7 +239,6 @@ struct Trunk
     }
 };
 
-// Helper function to print branches of the binary tree
 void showTrunks(Trunk *p)
 {
     if (p == nullptr) {
@@ -237,8 +249,7 @@ void showTrunks(Trunk *p)
     cout << p->str;
 }
 
-// Recursive function to print a binary tree.
-// It uses the inorder traversal.
+
 void printTree(Node* root, Trunk *prev, bool isLeft)
 {
     if (root == nullptr) {
@@ -272,4 +283,19 @@ void printTree(Node* root, Trunk *prev, bool isLeft)
     trunk->str = "   |";
 
     printTree(root->left, trunk, false);
+}
+
+// Resolution dans le cas ou on a 2 descendants, on fera plus tard le cas ou on a k descendants et il faut //
+// marqué les sommets avec les probas //
+
+template<TDistrib1,TDistrib2>
+struct Branch_diffusion_simple{
+
+private:
+  TDistrib1 X;
+  TDistrib2 Life_time;
+  std::function<double(double const & x)> payoff;
+  double Maturity;
+  double spot;
+
 }
