@@ -3,9 +3,9 @@
 #include<vector>
 #include <bits/stdc++.h>
 #include <fstream>
-#include "var.h"
-
+#include "random_va.h"
 #define COUNT 10
+
 
 using namespace std;
 
@@ -73,12 +73,10 @@ std::ostream & operator<<(std::ostream & o, path<T> const & p)
     return o << std::endl;
 }
 
-template<typename TDistrib1, typename TDistrib2>
-path<double> path_sim(state<double> ini_position,int N,TDistrib1 X, TDistrib2 Life_time){
-  random_device rd;
-  mt19937_64 gen(rd());
+template<typename TDistrib1, typename TDistrib2, typename TGen >
+path<double> path_sim(state<double> ini_position,int N,TDistrib1 X, TDistrib2 Life_time,TGen& gen){
   double life_time = Life_time(gen);
-  return X(gen,Life_time);
+  return X(gen,ini_position,life_time,N);
 };
 
 
@@ -97,19 +95,19 @@ struct Node* newNode(path<double> data) {
   return tree;
 }
 
-template<typename TDistrib1,typename TDistrib2>
-struct Node* create(state<double> init_position,double T,int N,TDistrib1 X,TDistrib2 Life_time)
+template<typename TDistrib1,typename TDistrib2, typename TGen >
+struct Node* create(state<double> init_position,double T,int N,TDistrib1 X,TDistrib2 Life_time,TGen& gen)
    {
     Node* p;
-   	path<double> ini_recur = path_sim(init_position,N,X,Life_time);
+   	path<double> ini_recur = path_sim(init_position,N,X,Life_time,gen);
     if (ini_recur[0].time > T ){
       return NULL;
     }
     else
     {
     p= newNode(ini_recur);
-   	p->left=  path_sim(init_position,N,X,Life_time);
-   	p->right= path_sim(init_position,N,X,Life_time);
+   	p->left  = create(ini_recur[N],T,N,X,Life_time,gen);
+   	p->right = create(ini_recur[N],T,N,X,Life_time,gen);
   }
   return p;
 };
@@ -164,8 +162,8 @@ void LastLeaves(Node* root,ofstream& of){
   else
   {
     of << root -> key << std::endl;
-    std::cout << root-> key << std::endl;
-    std::cout << endl;
+    // std::cout << root-> key << std::endl;
+    // std::cout << endl;
     return;
   };
 };
@@ -192,10 +190,7 @@ path<double> read_vect_particles_T (const char *Nomfich , int N,double T)
   {
     myVec.push_back(data);
   }
-  std::cout << " myVec" << std::endl;
-  std::cout << myVec << std::endl;
   int N_pat = myVec.size()/(2*N);
-  std::cout << "nombre de particules = "  << N_pat << std::endl;
   path<double> pat(N_pat);
   for (int i = 0 ; i<N_pat; i++){
     int k = 0;
@@ -275,18 +270,66 @@ void printTree(Node* root, Trunk *prev, bool isLeft)
     trunk->str = "   |";
 
     printTree(root->left, trunk, false);
-}xx
+}
 
-// Resolution dans le cas ou on a 2 descendants, on fera plus tard le cas ou on a k descendants et il faut //
-// marqué les sommets avec les probas //
+struct Brownien_geo{
 
-template<TDistrib1,TDistrib2>
-struct Branch_diffusion_simple{
+  Brownien_geo(double r, double sigma): r(r),sigma(sigma),G(0,1) {};
 
+  template<typename TGen>
+  path<double> operator()(TGen & gen, state<double> ini_position, double t, int N)
+  {
+    path<double> trajectories(N+1);
+    trajectories[0] = ini_position;
+    double mu = r - sigma * sigma * 0.5 ;
+    double delta_t = t/N;
+    for (int i = 1 ; i< N+1 ; i++){
+      trajectories[i].time = trajectories[i-1].time + delta_t;
+      trajectories[i].value= trajectories[i-1].value * exp( mu * delta_t + sigma * sqrt(delta_t) * G(gen) ) ;
+    }
+    return trajectories;
+  };
+
+private:
+  double sigma;
+  double r;
+  std::normal_distribution<> G;
+};
+
+
+
+double prod(const path<double>& Times_traj_T,std::function<double(double const &)> payoff){
+  int N = Times_traj_T.size();
+  double product = 1.;
+  for (int i = 0; i< N; i++){
+    product *= payoff(Times_traj_T[i].value);
+  };
+  return product;
+};
+
+
+template<typename TDistrib1,typename TDistrib2>
+struct Branch_diffusion_simple{ 
   Branch_diffusion_simple(TDistrib1 X, TDistrib2 Life_time, std::function<double(double const & )> payoff, double Maturity, double spot):
   X(X),Life_time(Life_time),payoff(payoff),Maturity(Maturity),spot(spot){};
 
-  double Resolution();
+  template<typename TGen>
+  double operator()(int N_simulations,TGen& gen){
+    double somme_esperance = 0;
+    state<double> ini_position = {0.,spot };
+    int N = 50;
+    for (int i = 0; i< N_simulations;i++)
+    {
+      Node* root;
+      root=create(ini_position,Maturity,N,X,Life_time,gen);
+      ofstream of1("last_leaves.txt");
+      LastLeaves(root,of1);
+      of1.close();
+      path<double> Times_traj_T = read_vect_particles_T("last_leaves.txt",N,Maturity);
+      somme_esperance += prod(Times_traj_T,payoff);
+    };
+    return somme_esperance / N_simulations;
+  };
 
 private:
   TDistrib1 X;
@@ -295,31 +338,4 @@ private:
   double Maturity;
   double spot;
 
-}
-
-double prod(const path<double>& Times_traj_T){
-  int N = Times_traj_T.size();
-  double product = 1.;
-  for (int i = 0; i< N; i++){
-    product *= Times_traj_T[i].value;
-  };
-  return product;
-}
-
-template<typename TDistrib1,typename TDistrib2>
-double Branch_diffusion_simple::Resolution(int N_simulations){
-    double somme_esperance = 0;
-    state<double> ini_position = {0.,spot };
-    int N = 30;
-    for (int i = 0; i< N_simulations,i++)
-    {
-      Node* root;
-      root=create(init_position,Maturity,N,X,Life_time);
-      ofstream of1("last_leaves.txt");
-      LastLeaves(root,of1);
-      of1.close();
-      path<double> Times_traj_T = read_vect_particles_T("last_leaves.txt",N,Maturity);
-      somme_esperance += prod(Times_traj_T);
-    }
-    return somme_esperance / N_simulations;
 };
