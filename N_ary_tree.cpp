@@ -6,7 +6,7 @@ using namespace std;
 
 int main(){
 
-  vector<double> proba =  {0.2 , 0.5, 0.3};
+  vector<double> proba =  {0.0,1.};
 
   Children Childs( cumul_proba(proba));
 
@@ -26,7 +26,7 @@ int main(){
   exponentiel_distribution Life_time(lambda);
 
   std::function<double(double const & )> payoff = [=] (double const &x){return x ;};
-  double Maturity = 1.;
+  double Maturity = 3.;
   double spot = S0  ;
 
   int N_simulations = 1000;
@@ -37,6 +37,12 @@ int main(){
   ofstream of("ultra_particles.txt");
   SaveNodes(root,of);
   of.close();
+
+  cout << " je prie frérot" << endl;
+
+  ofstream of1("last_leaves_ultra.txt");
+  LastLeaves(root,of1);
+  of1.close();
 
 
   return 0;
