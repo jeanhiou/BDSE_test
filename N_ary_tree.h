@@ -4,6 +4,8 @@
 #include <bits/stdc++.h>
 #include <fstream>
 
+#define NEGATIVE_INFINITY - std::numeric_limits<double>::infinity();
+
 using namespace std;
 
 template<typename T>
@@ -40,7 +42,8 @@ struct path : protected std::vector<state<T>> {
     using vec::operator[];      // opérateur [] utilisable (public)
     using vec::begin;           // itérateurs utilisables (for-range loop)
     using vec::end;
-    using vec::size;            // utile !
+    using vec::size;
+    using vec::push_back;
 };
 
 struct Brownien_geo{
@@ -141,7 +144,7 @@ struct Node* create(state<double> init_position,double T,int N,TDistrib1 X,TDist
      {
       Node* p;
      	path<double> ini_recur = path_sim(init_position,N,X,Life_time,gen);
-      if (ini_recur[0].time > T ){
+      if (ini_recur[0].time > T){
         return NULL;
       }
       else
@@ -221,63 +224,132 @@ void LastLeaves(Node* root, ofstream& of){
   }
 };
 
-path<double> read_vect_particles_T (const char *Nomfich , int N,double T)
+void read_vect_particles_T (Node* root , int N,double T , path<double>& pat)
 {
-  ifstream fileIn(Nomfich);
-  double data;
-  vector<double> myVec ;
-  while (fileIn >> data)
+  if(root == NULL)
   {
-    myVec.push_back(data);
+    return;
   }
-  int N_pat = myVec.size()/(2*N);
-  path<double> pat(N_pat);
-  for (int i = 0 ; i<N_pat; i++){
-    int k = 0;
-    double min_temps = 10.;
-    for (int j = 0;j<N;j++){
-      min_temps = min(min_temps,abs(myVec[2*j +i*2*N]-T));
+  int N_childs = root -> number_of_childs;
+  if (root -> children == remplir<Node*>(N_childs,NULL)){
+        path<double> data2 =  root -> key ;
+        int k = 0;
+        double min_temps = 100.;
+          for (int j = 0;j<N;j++){
+            min_temps = min(min_temps,abs(data2[j].time-T));
+          };
+          while( min_temps != abs(data2[k].time - T) ){
+            k+=1;
+          };
+            pat.push_back({0.5*(data2[k].time + data2[k+1].time),0.5*(data2[k].value + data2[k+1].value)});
+  }
+  else
+  {
+    for (int i = 0; i< N_childs;i++)
+    {
+    if (root -> children[i] != NULL){
+      read_vect_particles_T (root -> children[i],N,T,pat);
     };
-    while( min_temps != abs(myVec[2*k+i*2*N] - T) ){
-      k+=1;
-    };
-    pat[i].value = 0.5*(myVec[2*k+i*2*N+1] + myVec[2*k+i*2*N+3]) ;
-    pat[i].time  = 0.5*(myVec[2*k+i*2*N] + myVec[2*k+i*2*N+2] );
-  };
-  return pat;
+  }
+}
 };
 
-double prod(const path<double>& Times_traj_T,std::function<double(double const &)> payoff){
+double prod(const path<double>& Times_traj_T,std::function<double(double const &)> payoff, const vector<int>& v, const vector<double>& ak, const vector<double>& pk){
   int N = Times_traj_T.size();
-  std::cout << "nombre de particules = " << N << std::endl;
-  double product = 1.;
+  int Ak = ak.size();
+  double product_g = 1.;
+  double product_ak = 1.;
   for (int i = 0; i< N; i++){
-    product *= payoff(Times_traj_T[i].value);
+    product_g *= payoff(Times_traj_T[i].value);
   };
-  return product;
+  for (int i = 0 ; i< Ak ; i++){
+    if (ak[i] != 0){
+    product_ak *= pow(ak[i]/pk[i],v[i]);
+  }
+  }
+  return product_ak * product_g ;
+};
+
+void Number_of_k_descendants(Node* root,vector<int>& v){
+  if (root == NULL){
+    return;
+  }
+  else{
+    v[root-> number_of_childs - 1 ]  = v[root -> number_of_childs - 1] + 1 ;
+    for (int i = 0 ; i<root -> number_of_childs; i++){
+      Number_of_k_descendants(( root -> children)[i],v);
+    };
+  }
+}
+
+double norme_infini(std::function<double(const double &)> f , double a, double b){
+  double max_fx = NEGATIVE_INFINITY;
+  double delta = 0.01;
+  double x = a;
+  for (double x = a ; x <= b; x += delta)
+  {
+    const float fx = abs(f(x)) ;
+    if (fx > max_fx) // note any fx will be greater than NEGATIVE_INFINITY
+      max_fx = fx;
+  };
+  return max_fx;
+};
+
+//cumulated_proba vector //
+vector<double> proba_k(double norme_inf, vector<double> ak){
+  double sum = 0;
+  int N_k = ak.size();
+  vector<double> p_k(N_k);
+  for (int i = 0 ; i< N_k ; i++){
+    sum +=   ak[i] * pow(norme_inf,i);}
+  for (int i = 0 ; i< N_k ; i++){
+    p_k[i] = ak[i] * pow(norme_inf,i)/sum;
+  };
+  return p_k ;
+};
+
+template<typename TGen>
+vector<double> random_p_choice(TGen &gen,const vector<double>& ak){
+  int N_taille = ak.size();
+  vector<double> proba(N_taille);
+  std::uniform_real_distribution<double> U;
+  double somme = 0;
+  for (int i = 0 ; i< N_taille-1 ; i++){
+    if (ak [i] == 0.)
+    {
+      proba[i] = 0;
+    }
+    else
+    {
+      double alea = (1 - somme) * U(gen);
+      proba[i] = alea;
+      somme += alea;
+    };
+  };
+  proba[N_taille-1] = 1 - somme;
+  return proba;
 };
 
 
 template<typename TDistrib1,typename TDistrib2>
-struct Branch_diffusion_simple{
-  Branch_diffusion_simple(TDistrib1 X, TDistrib2 Life_time, std::function<double(double const & )> payoff, double Maturity, double spot):
-  X(X),Life_time(Life_time),payoff(payoff),Maturity(Maturity),spot(spot){};
+struct Branch_diffusion{
+  Branch_diffusion(TDistrib1 X, TDistrib2 Life_time, std::function<double(double const & )> payoff, double Maturity, double spot,vector<double> ak,vector<double> proba, Children childs):
+  X(X),Life_time(Life_time),payoff(payoff),Maturity(Maturity),spot(spot),ak(ak),proba(proba), childs(childs) {};
 
   template<typename TGen>
   double operator()(TGen& gen)
   {
     state<double> ini_position = {0.,spot };
-    int N = 20;
-    Node* root;
-    root=create(ini_position,Maturity,N,X,Life_time,gen);
-    ofstream of("particles.txt");
-    SaveNodes(root,of);
-    of.close();
-    ofstream of1("last_leaves.txt");
-    LastLeaves(root,of1);
-    of1.close();
-    path<double> Times_traj_T = read_vect_particles_T("last_leaves.txt",N,Maturity);
-    return prod(Times_traj_T,payoff);
+    int N = 40;
+
+    Node* root = create(ini_position,Maturity,N,X,Life_time,childs,gen);
+
+    vector<int> num_desc(proba.size());
+    Number_of_k_descendants(root,num_desc);
+
+    path<double> Times_traj_T ;
+    read_vect_particles_T (root ,N,Maturity,Times_traj_T);
+    return prod(Times_traj_T,payoff,num_desc,ak,proba);
   };
 
 private:
@@ -286,5 +358,8 @@ private:
   std::function<double(double const & )> payoff;
   double Maturity;
   double spot;
+  vector<double> ak;
+  Children childs;
+  vector<double> proba;
 
 };
