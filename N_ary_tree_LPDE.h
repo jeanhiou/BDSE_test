@@ -111,9 +111,8 @@ struct Children{
     std::uniform_real_distribution<double> U;
 };
 
-template<typename TDistrib1, typename TDistrib2, typename TGen >
-path<double> path_sim(state<double> ini_position,int N,TDistrib1 X, TDistrib2 Life_time,TGen& gen){
-  double life_time = Life_time(gen);
+template<typename TDistrib1,typename TGen >
+path<double> path_sim(state<double> ini_position,int N,TDistrib1 X,double life_time, TGen& gen){
   return X(gen,ini_position,life_time,N);
 };
 
@@ -142,23 +141,23 @@ struct Node* newNode(path<double> data,int child) {
   }
 
 template<typename TDistrib1,typename TDistrib2, typename TGen >
-struct Node* create(state<double> init_position,double T,int N,TDistrib1 X,TDistrib2 Life_time,Children& enfants,TGen& gen)
+Node* create_LPDE(state<double> init_position,double T,int N,TDistrib1 X,TDistrib2 Life_time,Children& enfants,TGen& gen)
      {
       Node* p;
-     	path<double> ini_recur = path_sim(init_position,N,X,Life_time,gen);
-      if (ini_recur[0].time > T){
-        return NULL;
-      }
-      else
-      {
+     	path<double> ini_recur = path_sim(init_position,N,X,T,gen);
+      int lifes = (int)round(Life_time(gen) / (T/N)) ;
       int N_enfants = enfants(gen);
       p= newNode(ini_recur,N_enfants);
-      for (int i = 0 ; i<N_enfants ; i++){
-        p -> children[i] = create(ini_recur[N],T,N,X,Life_time,enfants,gen);
+      if (lifes > N){
+        return p;
+      }
+      else{
+        for (int i = 0 ; i<N_enfants ; i++){
+          p -> children[i] = newNode(path_sim(ini_recur[lifes-1],N,X,T,gen),0);
       };
     };
     return p;
-  };
+};
 
 template <typename T>
 std::ostream & operator<<(std::ostream & o, path<T> const & p)
@@ -184,28 +183,6 @@ void SaveNodes(Node* root,ofstream& of){
     };
   };
 
-vector<int> indices_null(Node* root){
-  vector<int> indi_null;
-  for (int i = 0 ; i< root -> number_of_childs;i++){
-    if ((root -> children)[i] == NULL){
-      indi_null.push_back(i);
-    };
-  };
-  return indi_null;
-};
-
-vector<int> indices_no_null(Node* root){
-  vector<int> indi_null;
-  int N_childs = root->number_of_childs;
-  for (int i = 0 ; i< N_childs ;i++){
-    if ((root->children)[i] != NULL){
-      indi_null.push_back(i);
-    };
-  };
-  return indi_null;
-};
-
-
 void LastLeaves(Node* root, ofstream& of){
     if(root == NULL)
     {
@@ -225,6 +202,8 @@ void LastLeaves(Node* root, ofstream& of){
     }
   }
 };
+
+
 
 void read_vect_particles_T (Node* root , int N,double T , path<double>& pat)
 {
@@ -256,6 +235,7 @@ void read_vect_particles_T (Node* root , int N,double T , path<double>& pat)
 }
 };
 
+
 double prod(const path<double>& Times_traj_T,std::function<double(double const &)> payoff, const vector<int>& v, const vector<double>& ak, const vector<double>& pk){
   int N = Times_traj_T.size();
   int Ak = ak.size();
@@ -277,22 +257,9 @@ void Number_of_k_descendants(Node* root,vector<int>& v){
     return;
   }
   else{
-    v[root-> number_of_childs - 1 ]  = v[root -> number_of_childs - 1] + 1 ;
-    for (int i = 0 ; i<root -> number_of_childs; i++){
-      Number_of_k_descendants(( root -> children)[i],v);
-    };
-  }
-}
-
-void Number_of_k_descendants_LPDE(Node* root,vector<int>& v){
-  if (root == NULL){
-    return;
-  }
-  else{
     v[root-> number_of_childs - 1 ]  += v[root -> number_of_childs - 1] + 1 ;
 };
 }
-
 
 double norme_infini(std::function<double(const double &)> f , double a, double b){
   double max_fx = NEGATIVE_INFINITY;
@@ -344,41 +311,8 @@ vector<double> random_p_choice(TGen &gen,const vector<double>& ak){
 
 
 template<typename TDistrib1,typename TDistrib2>
-struct Branch_diffusion{
-  Branch_diffusion(TDistrib1 X, TDistrib2 Life_time, std::function<double(double const & )> payoff, double Maturity, double spot,vector<double> ak,vector<double> proba, Children childs):
-  X(X),Life_time(Life_time),payoff(payoff),Maturity(Maturity),spot(spot),ak(ak),proba(proba), childs(childs) {};
-
-  template<typename TGen>
-  double operator()(TGen& gen)
-  {
-    state<double> ini_position = {0.,spot };
-    int N = 40;
-
-    Node* root = create(ini_position,Maturity,N,X,Life_time,childs,gen);
-
-    vector<int> num_desc(proba.size());
-    Number_of_k_descendants(root,num_desc);
-    path<double> Times_traj_T ;
-    read_vect_particles_T (root ,N,Maturity,Times_traj_T);
-    return prod(Times_traj_T,payoff,num_desc,ak,proba);
-  };
-
-private:
-  TDistrib1 X;
-  TDistrib2 Life_time;
-  std::function<double(double const & )> payoff;
-  double Maturity;
-  double spot;
-  vector<double> ak;
-  Children childs;
-  vector<double> proba;
-
-};
-
-
-template<typename TDistrib1,typename TDistrib2>
 struct Branch_diffusion_LPDE{
-  Branch_diffusion_LPDE(TDistrib1 X, TDistrib2 Life_time, std::function<double(double const & )> payoff, double Maturity, double spot,vector<double> ak,vector<double> proba, Children childs):
+  Branch_diffusion(TDistrib1 X, TDistrib2 Life_time, std::function<double(double const & )> payoff, double Maturity, double spot,vector<double> ak,vector<double> proba, Children childs):
   X(X),Life_time(Life_time),payoff(payoff),Maturity(Maturity),spot(spot),ak(ak),proba(proba), childs(childs) {};
 
   template<typename TGen>
